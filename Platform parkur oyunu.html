@@ -1,0 +1,658 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+    <title>Web Tabanlı Platform Oyunu - 10 Seviye</title>
+    <style>
+        body {
+            margin: 0;
+            padding: 0;
+            background-color: #202028;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            height: 100vh;
+            overflow: hidden;
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            color: white;
+        }
+
+        #game-container {
+            position: relative;
+            box-shadow: 0 0 20px rgba(0,0,0,0.5);
+        }
+
+        canvas {
+            background-color: #87CEEB; /* Gökyüzü Mavisi */
+            display: block;
+            border-radius: 4px;
+            image-rendering: pixelated; 
+        }
+
+        /* Kullanıcı Arayüzü */
+        #ui-layer {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            background: rgba(0, 0, 0, 0.85);
+            z-index: 10;
+        }
+
+        /* HUD */
+        #hud-layer {
+            position: absolute;
+            top: 10px;
+            left: 10px;
+            width: 780px; 
+            pointer-events: none;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .hud-left { display: flex; gap: 15px; }
+
+        .score-box {
+            background: rgba(0, 0, 0, 0.5);
+            padding: 5px 15px;
+            border-radius: 20px;
+            font-size: 20px;
+            font-weight: bold;
+            color: #FFD700;
+            display: flex;
+            align-items: center;
+            border: 2px solid #fff;
+            box-shadow: 0 2px 5px rgba(0,0,0,0.5);
+        }
+
+        .level-badge {
+            color: #fff;
+            background: rgba(52, 152, 219, 0.8); /* Mavi */
+            border-color: #2980b9;
+        }
+
+        h1 {
+            font-size: 40px;
+            margin-bottom: 10px;
+            text-shadow: 2px 2px #000;
+            color: #FFD700;
+            text-align: center;
+        }
+
+        p {
+            font-size: 18px;
+            margin-bottom: 20px;
+            text-align: center;
+            max-width: 80%;
+            line-height: 1.5;
+        }
+
+        button {
+            padding: 15px 30px;
+            font-size: 20px;
+            cursor: pointer;
+            background-color: #ff4757;
+            color: white;
+            border: none;
+            border-radius: 5px;
+            transition: transform 0.1s;
+            font-weight: bold;
+        }
+        button:active { transform: scale(0.95); }
+        button:hover { background-color: #ff6b81; }
+
+        .hidden { display: none !important; }
+
+        /* Mobil Kontroller */
+        #mobile-controls {
+            position: absolute;
+            bottom: 20px;
+            width: 100%;
+            display: none;
+            justify-content: space-between;
+            padding: 0 20px;
+            box-sizing: border-box;
+            pointer-events: none;
+        }
+        .control-btn {
+            width: 60px; height: 60px;
+            background: rgba(255, 255, 255, 0.3);
+            border-radius: 50%;
+            display: flex; justify-content: center; align-items: center;
+            font-size: 24px; user-select: none; pointer-events: auto;
+            border: 2px solid rgba(255,255,255,0.5); color: white;
+        }
+        .control-group { display: flex; gap: 15px; }
+
+    </style>
+</head>
+<body>
+
+<div id="game-container">
+    <canvas id="gameCanvas" width="800" height="600"></canvas>
+    
+    <!-- HUD -->
+    <div id="hud-layer" class="hidden">
+        <div class="hud-left">
+            <div class="score-box level-badge">
+                <span>LVL</span>&nbsp;<span id="level-text">1</span><span style="font-size:14px; opacity:0.8;">/10</span>
+            </div>
+            <div class="score-box">
+                <span>🪙</span>&nbsp;<span id="score-text">0</span>
+            </div>
+        </div>
+    </div>
+
+    <!-- UI -->
+    <div id="ui-layer">
+        <h1 id="title-text">Büyük Macera</h1>
+        <p id="info-text">
+            <b>10 Seviyeli</b> zorlu bir parkur seni bekliyor.<br>
+            <span style="color:#2ecc71">1-4: Kolay</span> | 
+            <span style="color:#f1c40f">5-8: Orta</span> | 
+            <span style="color:#e74c3c">9-10: Zor</span><br><br>
+            Yön tuşları veya WASD ile oyna.
+        </p>
+        <button id="start-btn" onclick="startGame()">Maceraya Başla</button>
+    </div>
+
+    <!-- Mobil -->
+    <div id="mobile-controls">
+        <div class="control-group">
+            <div class="control-btn" id="btn-left">←</div>
+            <div class="control-btn" id="btn-right">→</div>
+        </div>
+        <div class="control-btn" id="btn-jump">↑</div>
+    </div>
+</div>
+
+<script>
+    // --- GÖRSELLER ---
+    function generateSprite(type) {
+        const c = document.createElement('canvas');
+        c.width = 32; c.height = 32;
+        const x = c.getContext('2d');
+        if (type === 'player') {
+            x.fillStyle = '#3498db'; x.fillRect(8, 8, 16, 24); 
+            x.fillStyle = '#e74c3c'; x.fillRect(6, 4, 20, 8); // Şapka
+            x.fillStyle = '#f1c40f'; x.fillRect(10, 12, 12, 10);
+            x.fillStyle = 'black'; x.fillRect(18, 14, 2, 4); x.fillRect(24, 14, 2, 4); 
+            x.fillStyle = '#2c3e50'; x.fillRect(8, 28, 6, 4); x.fillRect(18, 28, 6, 4);
+        } else if (type === 'enemy') {
+            x.fillStyle = '#c0392b'; x.fillRect(4, 8, 24, 20);
+            x.beginPath(); x.moveTo(4, 8); x.lineTo(8, 0); x.lineTo(12, 8); x.moveTo(12, 8); x.lineTo(16, 0); x.lineTo(20, 8); x.moveTo(20, 8); x.lineTo(24, 0); x.lineTo(28, 8); x.fill();
+            x.fillStyle = 'white'; x.fillRect(6, 12, 8, 6); x.fillRect(18, 12, 8, 6);
+            x.fillStyle = 'black'; x.fillRect(8, 14, 2, 2); x.fillRect(20, 14, 2, 2);
+            x.beginPath(); x.moveTo(6, 10); x.lineTo(14, 14); x.lineTo(14, 10); x.fill(); // Kaş
+            x.beginPath(); x.moveTo(26, 10); x.lineTo(18, 14); x.lineTo(18, 10); x.fill();
+            x.fillStyle = 'black'; x.fillRect(10, 22, 12, 2); // Ağız
+            x.fillStyle = 'white'; x.fillRect(12, 22, 2, 2); x.fillRect(18, 22, 2, 2); 
+        } else if (type === 'coin') {
+            x.fillStyle = '#FFD700'; x.beginPath(); x.arc(16, 16, 10, 0, Math.PI * 2); x.fill();
+            x.lineWidth = 2; x.strokeStyle = '#DAA520'; x.stroke();
+            x.fillStyle = 'white'; x.beginPath(); x.arc(12, 12, 3, 0, Math.PI * 2); x.fill();
+        }
+        return c.toDataURL();
+    }
+    const playerImg = new Image(); playerImg.src = generateSprite('player'); 
+    const enemyImg = new Image(); enemyImg.src = generateSprite('enemy');
+    const coinImg = new Image(); coinImg.src = generateSprite('coin');
+
+    // --- DEĞİŞKENLER ---
+    const canvas = document.getElementById('gameCanvas');
+    const ctx = canvas.getContext('2d');
+    const uiLayer = document.getElementById('ui-layer');
+    const hudLayer = document.getElementById('hud-layer');
+    const titleText = document.getElementById('title-text');
+    const infoText = document.getElementById('info-text');
+    const startBtn = document.getElementById('start-btn');
+    const scoreText = document.getElementById('score-text');
+    const levelText = document.getElementById('level-text');
+
+    let gameRunning = false;
+    let animationId;
+    let score = 0;
+    let levelStartScore = 0; 
+    let currentLevelIndex = 0;
+    let trapTriggered = false; // Sürpriz tuzak kontrolü
+    
+    // Fizik
+    const GRAVITY = 0.6;
+    const FRICTION = 0.5; // Tok kontroller
+    const JUMP_STRENGTH = -14; 
+    const MOVE_SPEED = 5;
+    const keys = { right: false, left: false, up: false };
+
+    const player = { x: 50, y: 200, width: 32, height: 32, velX: 0, velY: 0, color: '#e67e22', isGrounded: false, facingRight: true, img: playerImg };
+    let platforms = [], enemies = [], coins = [];
+
+    // --- 10 SEVİYE TASARIMI ---
+    // Type: 1=Zemin, 2=Diken, 3=Kapı, 4=Gri Diken Bloğu, 5=Sola Bakan Diken (Tuzak)
+    const levels = [
+        // --- FAZ 1: KOLAY (1-4) ---
+        // LVL 1
+        {
+            playerStart: { x: 50, y: 400 },
+            platforms: [
+                { x: 0, y: 580, w: 800, h: 20, type: 1 }, { x: -20, y: 0, w: 20, h: 600, type: 1 }, { x: 800, y: 0, w: 20, h: 600, type: 1 },
+                { x: 0, y: 450, w: 300, h: 20, type: 1 },
+                { x: 400, y: 350, w: 200, h: 20, type: 1 },
+                { x: 700, y: 250, w: 100, h: 20, type: 1 },
+                { x: 730, y: 190, w: 40, h: 60, type: 3 }
+            ],
+            enemies: [],
+            coins: [{x: 450, y: 300}, {x: 720, y: 200}]
+        },
+        // LVL 2
+        {
+            playerStart: { x: 50, y: 400 },
+            platforms: [
+                { x: 0, y: 580, w: 800, h: 20, type: 1 }, { x: -20, y: 0, w: 20, h: 600, type: 1 }, { x: 800, y: 0, w: 20, h: 600, type: 1 },
+                { x: 0, y: 450, w: 200, h: 20, type: 1 },
+                { x: 250, y: 380, w: 150, h: 20, type: 1 },
+                { x: 500, y: 300, w: 300, h: 20, type: 1 },
+                { x: 750, y: 240, w: 40, h: 60, type: 3 }
+            ],
+            enemies: [{ x: 550, y: 270, width: 32, height: 32, velX: 2, minX: 500, maxX: 750, facingRight: true }],
+            coins: [{x: 300, y: 340}, {x: 600, y: 260}]
+        },
+        // LVL 3
+        {
+            playerStart: { x: 50, y: 400 },
+            platforms: [
+                { x: 0, y: 580, w: 800, h: 20, type: 1 }, { x: -20, y: 0, w: 20, h: 600, type: 1 }, { x: 800, y: 0, w: 20, h: 600, type: 1 },
+                { x: 0, y: 450, w: 200, h: 20, type: 1 },
+                { x: 250, y: 450, w: 30, h: 20, type: 2 }, 
+                { x: 330, y: 350, w: 150, h: 20, type: 1 },
+                { x: 550, y: 250, w: 150, h: 20, type: 1 },
+                { x: 720, y: 190, w: 40, h: 60, type: 3 }
+            ],
+            enemies: [{ x: 350, y: 320, width: 32, height: 32, velX: 1.5, minX: 330, maxX: 450, facingRight: true }],
+            coins: [{x: 260, y: 400}, {x: 600, y: 200}]
+        },
+        // LVL 4
+        {
+            playerStart: { x: 50, y: 500 },
+            platforms: [
+                { x: 0, y: 580, w: 800, h: 20, type: 1 }, { x: -20, y: 0, w: 20, h: 600, type: 1 }, { x: 800, y: 0, w: 20, h: 600, type: 1 },
+                { x: 0, y: 430, w: 100, h: 20, type: 1 },   
+                { x: 150, y: 320, w: 100, h: 20, type: 1 }, 
+                { x: 300, y: 210, w: 100, h: 20, type: 1 }, 
+                { x: 450, y: 320, w: 100, h: 20, type: 1 }, 
+                { x: 600, y: 430, w: 200, h: 20, type: 1 }, 
+                { x: 750, y: 370, w: 40, h: 60, type: 3 }   
+            ],
+            enemies: [
+                { x: 600, y: 400, width: 32, height: 32, velX: -2, minX: 600, maxX: 750, facingRight: false }
+            ],
+            coins: [{x: 180, y: 270}, {x: 330, y: 160}, {x: 500, y: 270}]
+        },
+
+        // --- FAZ 2: ORTA (5-8) ---
+        // LVL 5
+        {
+            playerStart: { x: 30, y: 300 },
+            platforms: [
+                { x: -20, y: 0, w: 20, h: 600, type: 1 }, { x: 800, y: 0, w: 20, h: 600, type: 1 },
+                { x: 0, y: 580, w: 800, h: 20, type: 2 }, 
+                { x: 0, y: 400, w: 100, h: 20, type: 1 },
+                { x: 150, y: 350, w: 80, h: 20, type: 1 },
+                { x: 300, y: 300, w: 80, h: 20, type: 1 },
+                { x: 450, y: 250, w: 80, h: 20, type: 1 },
+                { x: 600, y: 200, w: 150, h: 20, type: 1 },
+                { x: 700, y: 140, w: 40, h: 60, type: 3 }
+            ],
+            enemies: [{ x: 600, y: 170, width: 32, height: 32, velX: 2, minX: 600, maxX: 700, facingRight: true }],
+            coins: [{x: 200, y: 300}, {x: 500, y: 200}]
+        },
+        // LVL 6
+        {
+            playerStart: { x: 50, y: 500 },
+            platforms: [
+                { x: 0, y: 580, w: 800, h: 20, type: 1 }, { x: -20, y: 0, w: 20, h: 600, type: 1 }, { x: 800, y: 0, w: 20, h: 600, type: 1 },
+                { x: 200, y: 450, w: 100, h: 20, type: 1 },
+                { x: 400, y: 350, w: 100, h: 20, type: 1 },
+                { x: 200, y: 250, w: 100, h: 20, type: 1 },
+                { x: 400, y: 150, w: 100, h: 20, type: 1 },
+                { x: 600, y: 100, w: 100, h: 20, type: 1 },
+                { x: 650, y: 40, w: 40, h: 60, type: 3 }
+            ],
+            enemies: [
+                { x: 200, y: 420, width: 32, height: 32, velX: 2, minX: 200, maxX: 300, facingRight: true },
+                { x: 400, y: 120, width: 32, height: 32, velX: 2, minX: 400, maxX: 500, facingRight: true }
+            ],
+            coins: [{x: 450, y: 300}, {x: 250, y: 200}]
+        },
+        // LVL 7
+        {
+            playerStart: { x: 50, y: 500 },
+            platforms: [
+                { x: 0, y: 580, w: 800, h: 20, type: 1 }, { x: -20, y: 0, w: 20, h: 600, type: 1 }, { x: 800, y: 0, w: 20, h: 600, type: 1 },
+                { x: 0, y: 450, w: 150, h: 20, type: 1 },
+                { x: 200, y: 380, w: 150, h: 20, type: 1 },
+                { x: 250, y: 340, w: 40, h: 40, type: 4 }, 
+                { x: 450, y: 300, w: 150, h: 20, type: 1 },
+                { x: 500, y: 260, w: 40, h: 40, type: 4 }, 
+                { x: 700, y: 200, w: 100, h: 20, type: 1 },
+                { x: 730, y: 140, w: 40, h: 60, type: 3 }
+            ],
+            enemies: [],
+            coins: [{x: 100, y: 400}, {x: 400, y: 250}, {x: 720, y: 150}]
+        },
+        // LVL 8
+        {
+            playerStart: { x: 50, y: 300 },
+            platforms: [
+                { x: 0, y: 580, w: 800, h: 20, type: 1 }, { x: -20, y: 0, w: 20, h: 600, type: 1 }, { x: 800, y: 0, w: 20, h: 600, type: 1 },
+                
+                // Düşen oyuncuyu kurtarmak için basamak
+                { x: 120, y: 490, w: 80, h: 20, type: 1 },
+                
+                { x: 0, y: 400, w: 100, h: 20, type: 1 },
+                { x: 150, y: 250, w: 100, h: 40, type: 4 }, 
+                { x: 150, y: 400, w: 100, h: 20, type: 1 }, 
+                
+                { x: 300, y: 400, w: 100, h: 20, type: 1 },
+                { x: 350, y: 250, w: 40, h: 40, type: 4 }, 
+                
+                { x: 500, y: 300, w: 150, h: 20, type: 1 },
+                { x: 700, y: 200, w: 100, h: 20, type: 1 },
+                { x: 730, y: 140, w: 40, h: 60, type: 3 }
+            ],
+            enemies: [{ x: 500, y: 270, width: 32, height: 32, velX: 3, minX: 500, maxX: 650, facingRight: true }],
+            coins: [{x: 200, y: 350}, {x: 550, y: 250}]
+        },
+
+        // --- FAZ 3: ZOR (9-10) ---
+        // LVL 9
+        {
+            playerStart: { x: 30, y: 450 },
+            platforms: [
+                { x: 0, y: 580, w: 800, h: 20, type: 2 }, 
+                { x: -20, y: 0, w: 20, h: 600, type: 1 }, { x: 800, y: 0, w: 20, h: 600, type: 1 },
+                
+                { x: 0, y: 500, w: 100, h: 20, type: 1 },
+                { x: 150, y: 450, w: 80, h: 20, type: 1 },
+                { x: 150, y: 300, w: 80, h: 40, type: 4 }, 
+                
+                { x: 300, y: 450, w: 80, h: 20, type: 1 },
+                { x: 300, y: 300, w: 80, h: 40, type: 4 },
+
+                { x: 450, y: 400, w: 80, h: 20, type: 1 },
+                { x: 600, y: 300, w: 100, h: 20, type: 1 },
+                { x: 750, y: 240, w: 40, h: 60, type: 3 }
+            ],
+            enemies: [
+                { x: 600, y: 270, width: 32, height: 32, velX: 4, minX: 600, maxX: 700, facingRight: true } 
+            ],
+            coins: [{x: 180, y: 400}, {x: 330, y: 400}, {x: 500, y: 350}]
+        },
+        // LVL 10: "Kule" (The Final Boss)
+        {
+            playerStart: { x: 30, y: 500 },
+            platforms: [
+                { x: 0, y: 580, w: 800, h: 20, type: 2 }, // Diken Zemin
+                { x: -20, y: 0, w: 20, h: 600, type: 1 }, { x: 800, y: 0, w: 20, h: 600, type: 1 },
+                
+                { x: 0, y: 530, w: 80, h: 20, type: 1 },
+                { x: 120, y: 450, w: 80, h: 20, type: 1 },
+                { x: 240, y: 380, w: 80, h: 20, type: 1 },
+                
+                { x: 350, y: 300, w: 150, h: 20, type: 1 },
+                { x: 350, y: 80, w: 150, h: 40, type: 4 }, 
+                
+                { x: 550, y: 250, w: 80, h: 20, type: 1 },
+                { x: 650, y: 180, w: 80, h: 20, type: 1 },
+                
+                { x: 500, y: 100, w: 100, h: 20, type: 1 },
+                { x: 530, y: 40, w: 40, h: 60, type: 3 }
+            ],
+            enemies: [
+                { x: 350, y: 270, width: 32, height: 32, velX: 3, minX: 350, maxX: 500, facingRight: true },
+                { x: 550, y: 220, width: 32, height: 32, velX: 1.98, minX: 548, maxX: 632, facingRight: true }
+            ],
+            coins: [{x: 150, y: 400}, {x: 420, y: 250}, {x: 680, y: 130}]
+        }
+    ];
+
+    // --- OLAYLAR ---
+    document.addEventListener('keydown', (e) => {
+        if (!gameRunning) return;
+        if (e.code === 'ArrowRight' || e.code === 'KeyD') keys.right = true;
+        if (e.code === 'ArrowLeft' || e.code === 'KeyA') keys.left = true;
+        if ((e.code === 'ArrowUp' || e.code === 'KeyW' || e.code === 'Space') && player.isGrounded) {
+            player.velY = JUMP_STRENGTH; player.isGrounded = false;
+        }
+    });
+    document.addEventListener('keyup', (e) => {
+        if (e.code === 'ArrowRight' || e.code === 'KeyD') keys.right = false;
+        if (e.code === 'ArrowLeft' || e.code === 'KeyA') keys.left = false;
+    });
+    // Mobil
+    if (/Mobi|Android/i.test(navigator.userAgent)) {
+        document.getElementById('mobile-controls').style.display = 'flex';
+        const addTouch = (id, k) => {
+            const el = document.getElementById(id);
+            el.addEventListener('touchstart', (e)=>{ e.preventDefault(); if(k==='up' && player.isGrounded){ player.velY=JUMP_STRENGTH; player.isGrounded=false; } else keys[k]=true; });
+            el.addEventListener('touchend', (e)=>{ e.preventDefault(); if(k!=='up') keys[k]=false; });
+        };
+        addTouch('btn-left','left'); addTouch('btn-right','right'); addTouch('btn-jump','up');
+    }
+
+    // --- OYUN FONKSİYONLARI ---
+    function loadLevel(idx) {
+        if (idx >= levels.length) { gameOver(true, true); return; }
+        const data = levels[idx];
+        player.x = data.playerStart.x; player.y = data.playerStart.y;
+        player.velX = 0; player.velY = 0; player.isGrounded = false;
+        keys.right = false; keys.left = false;
+        
+        trapTriggered = false; // Tuzak durumunu sıfırla
+
+        platforms = JSON.parse(JSON.stringify(data.platforms));
+        enemies = JSON.parse(JSON.stringify(data.enemies));
+        coins = JSON.parse(JSON.stringify(data.coins)).map(c=>({...c, width:20, height:20, collected:false}));
+        levelText.innerText = idx + 1;
+    }
+
+    function startGame() {
+        score = 0; levelStartScore = 0; scoreText.innerText = 0;
+        currentLevelIndex = 0;
+        loadLevel(0);
+        uiLayer.classList.add('hidden'); hudLayer.classList.remove('hidden');
+        gameRunning = true;
+        if (animationId) cancelAnimationFrame(animationId);
+        gameLoop();
+    }
+
+    function nextLevel() {
+        levelStartScore = score; // Checkpoint
+        currentLevelIndex++;
+        loadLevel(currentLevelIndex);
+    }
+
+    function gameOver(win, complete=false) {
+        gameRunning = false;
+        uiLayer.classList.remove('hidden'); hudLayer.classList.add('hidden');
+        if (win && complete) {
+            titleText.innerText = "EFSANE!"; titleText.style.color = "#2ecc71";
+            infoText.innerHTML = `Tüm 10 seviyeyi tamamladın.<br>Toplam Skor: <b>${score}</b>`;
+            startBtn.innerText = "Tekrar Oyna";
+            startBtn.onclick = startGame;
+        } else {
+            titleText.innerText = "YANDIN!"; titleText.style.color = "#e74c3c";
+            infoText.innerHTML = `Level ${currentLevelIndex+1}'de takıldın.<br>Seviye Başı Puanın: ${levelStartScore}`;
+            startBtn.innerText = "Tekrar Dene";
+            startBtn.onclick = () => {
+                score = levelStartScore; scoreText.innerText = score;
+                loadLevel(currentLevelIndex);
+                uiLayer.classList.add('hidden'); hudLayer.classList.remove('hidden');
+                gameRunning = true; gameLoop();
+            };
+        }
+    }
+
+    function checkRect(r1, r2) {
+        return (r1.x < r2.x + r2.width && r1.x + r1.width > r2.x && r1.y < r2.y + r2.height && r1.y + r1.height > r2.y);
+    }
+    function checkPlat(r1, p) {
+        return (r1.x < p.x + p.w && r1.x + r1.width > p.x && r1.y < p.y + p.h && r1.y + r1.height > p.y);
+    }
+
+    function update() {
+        // Hareket
+        if (keys.right) { player.velX = MOVE_SPEED; player.facingRight = true; }
+        else if (keys.left) { player.velX = -MOVE_SPEED; player.facingRight = false; }
+        else { player.velX *= FRICTION; }
+        if (Math.abs(player.velX)<0.1) player.velX=0;
+        player.x += player.velX;
+        
+        // --- HİLE TESPİTİ (Seviye 4) ---
+        // Hile tespit edilirse tüm zemini (y:450) kaplayan devasa bir blok çıkar.
+        if (currentLevelIndex === 3 && player.y > 500 && player.x > 150 && !trapTriggered) {
+            trapTriggered = true;
+            platforms.push({ x: player.x + 60, y: 450, w: 2000, h: 150, type: 4 });
+        }
+
+        // X Çarpışma
+        for (let p of platforms) {
+            let hitbox = (p.type===4 || p.type===5 || p.type===6) ? {x:p.x+5, y:p.y+5, w:p.w-10, h:p.h-10} : p;
+            if ((p.type===1 || p.type===4 || p.type===5 || p.type===6) && checkPlat(player, hitbox)) {
+                if (player.velX>0) player.x = hitbox.x - player.width;
+                else if (player.velX<0) player.x = hitbox.x + hitbox.w;
+                player.velX = 0;
+                if (p.type===4 || p.type===5 || p.type===6) { gameOver(false); return; }
+            }
+        }
+
+        player.velY += GRAVITY; player.y += player.velY; player.isGrounded = false;
+
+        // Y Çarpışma
+        for (let p of platforms) {
+            let hitbox = (p.type===4 || p.type===5 || p.type===6) ? {x:p.x+5, y:p.y+5, w:p.w-10, h:p.h-10} : p;
+            if (checkPlat(player, hitbox)) {
+                if (p.type===2 || p.type===4 || p.type===5 || p.type===6) { gameOver(false); return; }
+                if (p.type===3) { nextLevel(); return; }
+                if (p.type===1) {
+                    if (player.velY>0 && player.y+player.height < p.y+p.h+player.velY) {
+                        player.y = p.y - player.height; player.velY = 0; player.isGrounded = true;
+                    } else if (player.velY<0) {
+                        player.y = p.y + p.h; player.velY = 0;
+                    }
+                }
+            }
+        }
+
+        // Coin & Düşman
+        for (let i = 0; i < coins.length; i++) {
+            let c = coins[i];
+            if (!c.collected && checkRect(player, c)) { 
+                c.collected = true; 
+                score++; 
+                scoreText.innerText = score; 
+
+                // --- LEVEL 10 SÜRPRİZ TUZAK ---
+                if (currentLevelIndex === 9 && i === 2 && !trapTriggered) {
+                    trapTriggered = true;
+                    // 1. Arkayı kapatan Diken Duvarı (Tip 5 - Sola bakan)
+                    platforms.push({ x: c.x + 25, y: -500, w: 20, h: 1200, type: 5 });
+                    
+                    // 2. Gap Spike (Tip 6 - Sağa bakan) - YUKARI TAŞINDI
+                    // Zıplama rotasının ortasına (y:140) yerleştirildi.
+                    platforms.push({ x: 600, y: 140, w: 20, h: 20, type: 6 });
+
+                    // 3. Bitiş Spike (Tip 2 - Yer dikeni) - SAĞA TAŞINDI
+                    // Oyuncunun indiği yere (x:580) konuldu.
+                    platforms.push({ x: 580, y: 100, w: 15, h: 20, type: 2 });
+                }
+            }
+        }
+        for (let e of enemies) {
+            e.x += e.velX;
+            if (e.x <= e.minX) { e.x = e.minX; e.velX *= -1; e.facingRight=true; }
+            else if (e.x+e.width >= e.maxX) { e.x = e.maxX-e.width; e.velX *= -1; e.facingRight=false; }
+            if (checkRect(player, e)) { gameOver(false); return; }
+        }
+        if (player.y > canvas.height) gameOver(false);
+    }
+
+    function draw() {
+        ctx.clearRect(0,0,canvas.width,canvas.height);
+        // Arkaplan
+        ctx.fillStyle = "rgba(255,255,255,0.4)";
+        ctx.beginPath(); ctx.arc(100,100,30,0,Math.PI*2); ctx.fill();
+        ctx.beginPath(); ctx.arc(600,150,40,0,Math.PI*2); ctx.fill();
+        
+        // Platform
+        for (let p of platforms) {
+            if (p.type===1) {
+                ctx.fillStyle="#555"; ctx.fillRect(p.x,p.y,p.w,p.h);
+                ctx.fillStyle="#2ecc71"; ctx.fillRect(p.x,p.y,p.w,5);
+            } else if (p.type===2) { // Diken (Yukarı)
+                ctx.fillStyle="#e74c3c";
+                const cnt = Math.floor(p.w/10);
+                for(let i=0;i<cnt;i++) {
+                    ctx.beginPath(); ctx.moveTo(p.x+i*10,p.y+p.h); ctx.lineTo(p.x+i*10+5,p.y); ctx.lineTo(p.x+i*10+10,p.y+p.h); ctx.fill();
+                }
+            } else if (p.type===3) { // Kapı
+                ctx.fillStyle="#f1c40f"; ctx.fillRect(p.x,p.y,p.w,p.h);
+                ctx.lineWidth=3; ctx.strokeStyle="#fff"; ctx.strokeRect(p.x,p.y,p.w,p.h);
+                ctx.fillStyle="#000"; ctx.beginPath(); ctx.arc(p.x+p.w-10,p.y+p.h/2,3,0,Math.PI*2); ctx.fill();
+            } else if (p.type===4) { // Engel (Gri Blok)
+                ctx.fillStyle="#7f8c8d";
+                const cnt = Math.floor(p.w/20);
+                for(let i=0;i<cnt;i++) {
+                    ctx.beginPath(); ctx.moveTo(p.x+i*20,p.y+p.h); ctx.lineTo(p.x+i*20+10,p.y); ctx.lineTo(p.x+i*20+20,p.y+p.h); ctx.fill();
+                    ctx.fillStyle="rgba(0,0,0,0.2)"; ctx.beginPath(); ctx.moveTo(p.x+i*20+10,p.y); ctx.lineTo(p.x+i*20+20,p.y+p.h); ctx.lineTo(p.x+i*20+10,p.y+p.h); ctx.fill(); ctx.fillStyle="#7f8c8d";
+                }
+            } else if (p.type===5) { // Sola Bakan Dikenler
+                ctx.fillStyle="#e74c3c";
+                const cnt = Math.floor(p.h/10); // Yükseklik boyunca çiz
+                for(let i=0;i<cnt;i++) {
+                    ctx.beginPath(); 
+                    ctx.moveTo(p.x+p.w, p.y+i*10);     // Sağ üst köşe
+                    ctx.lineTo(p.x, p.y+i*10+5);       // Sol uç (Sivri kısım)
+                    ctx.lineTo(p.x+p.w, p.y+i*10+10);  // Sağ alt köşe
+                    ctx.fill();
+                }
+            } else if (p.type===6) { // Sağa Bakan Dikenler (YENİ)
+                ctx.fillStyle="#e74c3c";
+                const cnt = Math.floor(p.h/10); // Yükseklik boyunca çiz
+                for(let i=0;i<cnt;i++) {
+                    ctx.beginPath(); 
+                    ctx.moveTo(p.x, p.y+i*10);         // Sol üst köşe
+                    ctx.lineTo(p.x+p.w, p.y+i*10+5);   // Sağ uç (Sivri kısım)
+                    ctx.lineTo(p.x, p.y+i*10+10);      // Sol alt köşe
+                    ctx.fill();
+                }
+            }
+        }
+        
+        // Objeler
+        for (let c of coins) {
+            if(!c.collected) { const fy = Math.sin(Date.now()/200)*3; ctx.drawImage(coinImg, c.x, c.y+fy, 32, 32); }
+        }
+        for (let e of enemies) {
+            ctx.save(); ctx.shadowColor="rgba(0,0,0,0.5)"; ctx.shadowBlur=5;
+            if(!e.facingRight) { ctx.scale(-1,1); ctx.drawImage(enemyImg, -e.x-e.width, e.y, e.width, e.height); }
+            else ctx.drawImage(enemyImg, e.x, e.y, e.width, e.height);
+            ctx.restore();
+        }
+        ctx.save(); ctx.shadowColor="rgba(0,0,0,0.5)"; ctx.shadowBlur=5;
+        if(!player.facingRight) { ctx.scale(-1,1); ctx.drawImage(playerImg, -player.x-player.width, player.y, player.width, player.height); }
+        else ctx.drawImage(playerImg, player.x, player.y, player.width, player.height);
+        ctx.restore();
+    }
+
+    function gameLoop() { if(gameRunning) { update(); draw(); animationId=requestAnimationFrame(gameLoop); } }
+    setTimeout(draw, 100);
+</script>
+</body>
+</html>
